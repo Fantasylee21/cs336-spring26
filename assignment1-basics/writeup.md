@@ -54,3 +54,24 @@ make sense
 (b) 每次合并都要全量扫描 pair_counts 找最大值
 
 Problem (train_bpe_expts_owt):  BPE Training on OpenWebText (2 points)
+
+Problem (tokenizer_experiments):  Experiments with tokenizers
+
+TinyStories Tokenizer :
+TinyStories: 10751 bytes / 2663 tokens = 4.04 bytes/token
+throughput: 3230.36 total_bytes/sec
+OpenWebText: 50460 bytes / 14821 tokens = 3.40 bytes/token
+throughput: 2947.30 total_bytes/sec
+
+OpenWebText Tokenizer :
+
+
+825GB = 825 * 1024 * 1024 * 1024 = 885,837,004,800 bytes
+
+TinyStories Tokenizer :
+time1 = 885,837,004,800 / 2947.30 = 300,500,000 seconds = 3.48 days
+time2 = 885,837,004,800 / 3230.36 = 274,000,000 seconds = 3.17 days
+
+OpenWebText Tokenizer :
+
+(d) uint16 的取值范围是 0–65535，而 10K vocab 的 token ID 最大只到 9999

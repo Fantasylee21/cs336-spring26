@@ -26,6 +26,27 @@ def _pretokenize_chunk(segments):
     return word_counts
 
 
+def _str_to_bytes(token_str):
+    """Reverse the GPT-2 byte-to-display-string convention.
+
+    ``_bytes_to_str`` in train_bpe.py maps:
+      - 0x20 (space) → 'Ġ' (U+0120)
+      - 0x21–0x7E (printable ASCII) → chr(b)
+      - all other bytes → chr(b + 256)
+    This function undoes that mapping.
+    """
+    result = []
+    for c in token_str:
+        cp = ord(c)
+        if cp == 0x120:          # 'Ġ' → space
+            result.append(0x20)
+        elif 0x21 <= cp <= 0x7E:  # printable ASCII → itself
+            result.append(cp)
+        else:                     # shifted bytes → cp - 256
+            result.append(cp - 256)
+    return bytes(result)
+
+
 class Tokenizer:
     def __init__(self, vocab, merges, special_tokens=None):
         self.vocab = vocab
@@ -38,17 +59,18 @@ class Tokenizer:
         # Reverse mapping: bytes -> token ID, built once for efficient encoding
         self.bytes_to_id = {v: k for k, v in vocab.items()}
 
+    @classmethod
     def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None):
         """Class method that constructs and returns a Tokenizer from a serialized vocabulary and list of merges (in the same format that your BPE training code output) and (optionally) a list of special tokens."""
         with open(vocab_filepath, "r", encoding="utf-8") as f:
             vocab_dict = json.load(f)
-        vocab = {v: k.encode("utf-8") for k, v in vocab_dict.items()}
+        vocab = {v: _str_to_bytes(k) for k, v in vocab_dict.items()}
 
         merges = []
         with open(merges_filepath, "r", encoding="utf-8") as f:
             for line in f:
                 t1, t2 = line.strip().split()
-                merges.append((t1.encode("utf-8"), t2.encode("utf-8")))
+                merges.append((_str_to_bytes(t1), _str_to_bytes(t2)))
 
         return cls(vocab, merges, special_tokens)
     
