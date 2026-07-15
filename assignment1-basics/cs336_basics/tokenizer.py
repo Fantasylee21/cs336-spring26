@@ -1,6 +1,9 @@
+from collections.abc import Iterator
 import multiprocessing as mp
+from typing import Iterable
 import regex as re
 from collections import Counter, defaultdict
+import json
 
 # Module-level constant for the GPT-2 pretokenization pattern, reused
 # by _pretokenize_chunk (needed for multiprocessing pickling).
@@ -24,13 +27,89 @@ def _pretokenize_chunk(segments):
 
 
 class Tokenizer:
-    def __init__(self, vocab, merges, special_tokens):
+    def __init__(self, vocab, merges, special_tokens=None):
         self.vocab = vocab
         self.merges = merges
         self.special_tokens = special_tokens or []
 
         # GPT-2 pretokenization regex
         self.pretoken_pattern = re.compile(_GPT2_PATTERN)
+
+        # Reverse mapping: bytes -> token ID, built once for efficient encoding
+        self.bytes_to_id = {v: k for k, v in vocab.items()}
+
+    def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None):
+        """Class method that constructs and returns a Tokenizer from a serialized vocabulary and list of merges (in the same format that your BPE training code output) and (optionally) a list of special tokens."""
+        with open(vocab_filepath, "r", encoding="utf-8") as f:
+            vocab_dict = json.load(f)
+        vocab = {v: k.encode("utf-8") for k, v in vocab_dict.items()}
+
+        merges = []
+        with open(merges_filepath, "r", encoding="utf-8") as f:
+            for line in f:
+                t1, t2 = line.strip().split()
+                merges.append((t1.encode("utf-8"), t2.encode("utf-8")))
+
+        return cls(vocab, merges, special_tokens)
+    
+    def _encode_word(self, word_bytes):
+        """Encode a single pretokenized word (as bytes) into token IDs using learned BPE merges."""
+        ids = [self.bytes_to_id[bytes([b])] for b in word_bytes]
+
+        for t1_bytes, t2_bytes in self.merges:
+            merged_id = self.bytes_to_id.get(t1_bytes + t2_bytes)
+            if merged_id is None:
+                continue
+
+            i = 0
+            while i < len(ids) - 1:
+                if self.vocab[ids[i]] == t1_bytes and self.vocab[ids[i + 1]] == t2_bytes:
+                    ids[i] = merged_id
+                    del ids[i + 1]
+                else:
+                    i += 1
+
+        return ids
+
+    def encode(self, text: str):
+        """Pretokenize the input text and return a list of token IDs according to the tokenizer's vocabulary and merges."""
+        special_set = set(self.special_tokens)
+        chunks = Tokenizer._split_by_special_tokens(text, self.special_tokens)
+        token_ids = []
+        for chunk in chunks:
+            if not chunk:
+                continue
+            if chunk in special_set:
+                token_ids.append(self.bytes_to_id[chunk.encode("utf-8")])
+            else:
+                for segment in self.pretoken_pattern.findall(chunk):
+                    token_ids.extend(self._encode_word(segment.encode("utf-8")))
+        return token_ids
+
+    def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
+        """
+        Given an iterable of strings (e.g., a Python file handle), return a generator that lazily yields token IDs. This is
+        required for memory-efficient tokenization of large files that we cannot directly load into memory
+        """
+        special_set = set(self.special_tokens)
+        for text in iterable:
+            chunks = Tokenizer._split_by_special_tokens(text, self.special_tokens)
+            for chunk in chunks:
+                if not chunk:
+                    continue
+                if chunk in special_set:
+                    yield self.bytes_to_id[chunk.encode("utf-8")]
+                else:
+                    for segment in self.pretoken_pattern.findall(chunk):
+                        yield from self._encode_word(segment.encode("utf-8"))
+
+
+    def decode(self, ids: list[int]) -> str:
+        """
+        Decode a sequence of token IDs into text.
+        """
+        byte_seq = b"".join(self.vocab[tid] for tid in ids)
+        return byte_seq.decode("utf-8", errors="replace")
 
     @classmethod
     def train_bpe(cls, file, vocab_size, special_tokens, **kwargs):
