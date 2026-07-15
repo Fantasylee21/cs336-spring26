@@ -33,3 +33,24 @@ print(res)
 ```
 
 (c) The first byte 0xFF starts with eight 1 bits, which UTF-8 defines as an invalid leading byte with no valid character length encoding, making this two-byte sequence entirely undecodable to any Unicode character under the UTF-8 standard.
+
+Problem (train_bpe_tinystories)
+(a)
+
+train on Apple M5 MacbookPro, 10 cores, 24GB RAM
+
+Training time: 124.1 seconds (2.1 minutes)
+
+Peak memory: 14871.9 MB
+
+Longest token ID: 7160
+
+Longest token length: 15 bytes
+
+Longest token (UTF-8): 'Ġaccomplishment'
+
+make sense
+
+(b) 每次合并都要全量扫描 pair_counts 找最大值
+
+Problem (train_bpe_expts_owt):  BPE Training on OpenWebText (2 points)
