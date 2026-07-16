@@ -89,14 +89,36 @@ OpenWebText Tokenizer :
   50,460 bytes -> 11,201 tokens (4.50 bytes/token)
   60.11s, throughput: 839.51 bytes/s
 
-825GB = 825 * 1024 * 1024 * 1024 = 885,837,004,800 bytes
+825GB = 825 * 1024 * 1024 * 1024 = 865075200 bytes
 
 TinyStories Tokenizer :
-time1 = 885,837,004,800 / 2947.30 = 300,500,000 seconds = 3.48 days
-time2 = 885,837,004,800 / 3230.36 = 274,000,000 seconds = 3.17 days
+time1 = 865075200 / 2947.30 = 293514.47 seconds = 3.40 days
+time2 = 865075200 / 3230.36 = 267795.29 seconds = 3.10 days
 
 OpenWebText Tokenizer :
-time1 = 885,837,004,800 / 839.51 = 1,060,000,000 seconds = 11.5 days
-time1 = 885,837,004,800 / 745.32 = 1,500,000,000 seconds = 16.5 days
+time1 = 865075200 / 839.51 = 1030452.53 seconds = 11.93 days
+time1 = 865075200 / 745.32 = 1160676.22 seconds = 13.43 days
 
 (d) uint16 的取值范围是 0–65535，而 10K vocab 的 token ID 最大只到 9999
+
+优化版本
+Training time: 109.8 seconds (1.8 minutes)
+Peak memory: 52.8 MB
+Vocabulary size: 10000
+Number of merges: 9743
+Longest token ID: 7160
+Longest token length: 15 bytes
+Longest token (UTF-8): ' accomplishment'
+
+TinyStories Tokenizer :
+
+[TinyStories]
+  10,751 bytes -> 2,663 tokens (4.04 bytes/token)
+  0.00s, throughput: 3,202,625.16 bytes/s
+
+[OpenWebText]
+  50,460 bytes -> 14,821 tokens (3.40 bytes/token)
+  0.02s, throughput: 3,031,505.83 bytes/s
+
+time1 = 865075200 / 3202625.16 = 270.11 seconds = 4.50 minutes
+time2 = 865075200 / 3031505.83 = 285.36 seconds = 4.76 minutes

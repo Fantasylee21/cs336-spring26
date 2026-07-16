@@ -38,19 +38,22 @@ def encode_and_save(tokenizer, src_path, dst_path, chunk_size=1_000_000):
     t0 = time.time()
 
     chunks = []
-    buf = []
+    buf = np.empty(chunk_size, dtype=np.uint16)
+    idx = 0
     total = 0
     with open(src_path, "r", encoding="utf-8") as f:
         for token_id in tokenizer.encode_iterable(f):
-            buf.append(token_id)
+            buf[idx] = token_id
+            idx += 1
             total += 1
-            if len(buf) >= chunk_size:
-                chunks.append(np.array(buf, dtype=np.uint16))
-                buf = []
+            if idx >= chunk_size:
+                chunks.append(buf)
+                buf = np.empty(chunk_size, dtype=np.uint16)
+                idx = 0
                 if total % (10 * chunk_size) == 0:
                     print(f"    {total:,} tokens...")
-    if buf:
-        chunks.append(np.array(buf, dtype=np.uint16))
+    if idx > 0:
+        chunks.append(buf[:idx])
 
     all_ids = np.concatenate(chunks)
     np.save(dst_path, all_ids)
@@ -63,8 +66,8 @@ def encode_and_save(tokenizer, src_path, dst_path, chunk_size=1_000_000):
 
 
 def main():
-    vocab_filepath = "cs336_basics/output/TinyStoriesV2-GPT4-train/vocab.json"
-    merges_filepath = "cs336_basics/output/TinyStoriesV2-GPT4-train/merges.txt"
+    vocab_filepath = "cs336_basics/output/owt_train/vocab.json"
+    merges_filepath = "cs336_basics/output/owt_train/merges.txt"
     special_tokens = ["<|endoftext|>"]
 
     tokenizer = Tokenizer.from_files(vocab_filepath, merges_filepath, special_tokens)
@@ -82,10 +85,10 @@ def main():
     # ---- Full dataset encoding ----
     print("\n=== Full Dataset Encoding ===")
     for name, src, dst in [
-        ("TinyStories train", "data/TinyStoriesV2-GPT4-train.txt",
-         "data/TinyStoriesV2-GPT4-train.npy"),
-        ("TinyStories valid", "data/TinyStoriesV2-GPT4-valid.txt",
-         "data/TinyStoriesV2-GPT4-valid.npy"),
+        ("OpenWebText train", "data/owt_train.txt",
+         "data/owt_train.npy"),
+        ("OpenWebText valid", "data/owt_valid.txt",
+         "data/owt_valid.npy"),
     ]:
         print(f"\n[{name}]")
         encode_and_save(tokenizer, src, dst)
