@@ -53,18 +53,41 @@ make sense
 
 (b) 每次合并都要全量扫描 pair_counts 找最大值
 
-Problem (train_bpe_expts_owt):  BPE Training on OpenWebText (2 points)
+Problem (train_bpe_expts_owt):  BPE Training on OpenWebText 
+trained on Intel(R) Xeon(R) Processor @ 2.90GHz 16 cores 400G
+Training time: 43417.6 seconds (723.6 minutes)
+Peak memory: 101518.2 MB
+Vocabulary size: 32000
+Number of merges: 31743
+Longest token ID: 25822
+Longest token length: 64 bytes
+Longest token (UTF-8): 'ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ'
 
 Problem (tokenizer_experiments):  Experiments with tokenizers
 
 TinyStories Tokenizer :
+macbook:
 TinyStories: 10751 bytes / 2663 tokens = 4.04 bytes/token
 throughput: 3230.36 total_bytes/sec
 OpenWebText: 50460 bytes / 14821 tokens = 3.40 bytes/token
 throughput: 2947.30 total_bytes/sec
+alibaba server:
+[TinyStories]
+  10,751 bytes -> 2,663 tokens (4.04 bytes/token)
+  4.05s, throughput: 2,654.32 bytes/s
+
+[OpenWebText]
+  50,460 bytes -> 14,821 tokens (3.40 bytes/token)
+  20.36s, throughput: 2,478.30 bytes/s
 
 OpenWebText Tokenizer :
+[TinyStories]
+  10,751 bytes -> 2,760 tokens (3.90 bytes/token)
+  14.42s, throughput: 745.32 bytes/s
 
+[OpenWebText]
+  50,460 bytes -> 11,201 tokens (4.50 bytes/token)
+  60.11s, throughput: 839.51 bytes/s
 
 825GB = 825 * 1024 * 1024 * 1024 = 885,837,004,800 bytes
 
@@ -73,5 +96,7 @@ time1 = 885,837,004,800 / 2947.30 = 300,500,000 seconds = 3.48 days
 time2 = 885,837,004,800 / 3230.36 = 274,000,000 seconds = 3.17 days
 
 OpenWebText Tokenizer :
+time1 = 885,837,004,800 / 839.51 = 1,060,000,000 seconds = 11.5 days
+time1 = 885,837,004,800 / 745.32 = 1,500,000,000 seconds = 16.5 days
 
 (d) uint16 的取值范围是 0–65535，而 10K vocab 的 token ID 最大只到 9999
