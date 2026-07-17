@@ -99,7 +99,7 @@ def scaled_dot_product_attention(query: torch.Tensor, key: torch.Tensor, value: 
     return output
 
 class Multihead_Self_Attention(nn.Module):
-    def __init__(self, d_model: int, num_heads: int, max_seq_len: int | None = None, theta: float | None = None, token_positions: torch.Tensor | None = None, device=None, dtype=None):
+    def __init__(self, d_model: int, num_heads: int, max_seq_len: int | None = None, theta: float | None = None, device=None, dtype=None):
         super().__init__()
         self.d_model = d_model
         self.num_heads = num_heads
@@ -113,12 +113,11 @@ class Multihead_Self_Attention(nn.Module):
         if theta is not None:
             self.theta = theta
             self.max_seq_len = max_seq_len
-            self.token_positions = token_positions
             self.rope = RoPEEmbedding(theta, self.d_t, max_seq_len, device=device)
         else:
             self.rope = None
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None) -> torch.Tensor:
         seq_len = x.shape[-2]
         q = self.query_linear(x)
         k = self.key_linear(x)
@@ -128,9 +127,9 @@ class Multihead_Self_Attention(nn.Module):
         k = k.view(*k.shape[:-2], seq_len, self.num_heads, self.d_t).transpose(-3, -2)
         v = v.view(*v.shape[:-2], seq_len, self.num_heads, self.d_t).transpose(-3, -2)
 
-        if self.rope is not None:
-            q = self.rope(q, self.token_positions)
-            k = self.rope(k, self.token_positions)
+        if self.rope is not None and token_positions is not None:
+            q = self.rope(q, token_positions)
+            k = self.rope(k, token_positions)
 
         mask = torch.tril(torch.ones((seq_len, seq_len), device=x.device, dtype=torch.bool)).unsqueeze(0)
 

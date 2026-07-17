@@ -199,14 +199,14 @@ def run_multihead_self_attention_with_rope(
         implementation with the given QKV projection weights and input features.
     """
     from cs336_basics.module import Multihead_Self_Attention
-    mha = Multihead_Self_Attention(d_model, num_heads, max_seq_len, theta, token_positions)
+    mha = Multihead_Self_Attention(d_model, num_heads, max_seq_len, theta)
     mha.load_state_dict({
         "query_linear.weight": q_proj_weight,
         "key_linear.weight": k_proj_weight,
         "value_linear.weight": v_proj_weight,
         "out_linear.weight": o_proj_weight,
     })
-    return mha(in_features)
+    return mha(in_features, token_positions)
 
 
 def run_rope(
@@ -303,7 +303,20 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    from cs336_basics.transformer import transformer_block
+    transformer = transformer_block(d_model, num_heads, d_ff, max_seq_len, theta)
+    transformer.load_state_dict({
+        "attention.query_linear.weight": weights["attn.q_proj.weight"],
+        "attention.key_linear.weight": weights["attn.k_proj.weight"],
+        "attention.value_linear.weight": weights["attn.v_proj.weight"],
+        "attention.out_linear.weight": weights["attn.output_proj.weight"],
+        "norm1.weight": weights["ln1.weight"],
+        "ffn.linear1.weight": weights["ffn.w1.weight"],
+        "ffn.linear2.weight": weights["ffn.w2.weight"],
+        "ffn.linear3.weight": weights["ffn.w3.weight"],
+        "norm2.weight": weights["ln2.weight"],
+    })
+    return transformer(in_features)
 
 
 def run_transformer_lm(
@@ -385,7 +398,25 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    from cs336_basics.transformer import transformer_lm
+    lm = transformer_lm(vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta)
+    state_dict = {
+        "token_embedding.weight": weights["token_embeddings.weight"],
+        "norm.weight": weights["ln_final.weight"],
+        "output_linear.weight": weights["lm_head.weight"],
+    }
+    for i in range(num_layers):
+        state_dict[f"layers.{i}.attention.query_linear.weight"] = weights[f"layers.{i}.attn.q_proj.weight"]
+        state_dict[f"layers.{i}.attention.key_linear.weight"] = weights[f"layers.{i}.attn.k_proj.weight"]
+        state_dict[f"layers.{i}.attention.value_linear.weight"] = weights[f"layers.{i}.attn.v_proj.weight"]
+        state_dict[f"layers.{i}.attention.out_linear.weight"] = weights[f"layers.{i}.attn.output_proj.weight"]
+        state_dict[f"layers.{i}.norm1.weight"] = weights[f"layers.{i}.ln1.weight"]
+        state_dict[f"layers.{i}.ffn.linear1.weight"] = weights[f"layers.{i}.ffn.w1.weight"]
+        state_dict[f"layers.{i}.ffn.linear2.weight"] = weights[f"layers.{i}.ffn.w2.weight"]
+        state_dict[f"layers.{i}.ffn.linear3.weight"] = weights[f"layers.{i}.ffn.w3.weight"]
+        state_dict[f"layers.{i}.norm2.weight"] = weights[f"layers.{i}.ln2.weight"]
+    lm.load_state_dict(state_dict)
+    return lm(in_indices)
 
 
 def run_rmsnorm(
