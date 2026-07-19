@@ -89,6 +89,11 @@ def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
     x_exp = torch.exp(x - x_max)
     return x_exp / x_exp.sum(dim=dim, keepdim=True)
 
+
+def silu(x: torch.Tensor) -> torch.Tensor:
+    """SiLU (Sigmoid Linear Unit) activation: x * sigmoid(x)."""
+    return x * torch.sigmoid(x)
+
 def scaled_dot_product_attention(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, mask: torch.Tensor | None = None):
     d_k = query.shape[-1]
     attention_scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)

@@ -1,6 +1,7 @@
 import importlib.metadata
 
 from .tokenizer import Tokenizer
+from .optim import AdamW
 
 try:
     __version__ = importlib.metadata.version("cs336_basics")
