@@ -1,5 +1,4 @@
 import argparse
-import json
 import math
 import os
 import time
@@ -19,8 +18,6 @@ def _load_dataset(path: str) -> np.ndarray:
     if path.endswith(".npy"):
         return np.load(path, mmap_mode="r")
     elif path.endswith(".txt"):
-        # For .txt files, read once and convert to token IDs
-        # Assumes the .txt is already tokenized to whitespace-separated ints
         tokens = []
         with open(path) as f:
             for line in f:
@@ -48,6 +45,47 @@ def _evaluate(model, dataset, batch_size, context_length, device, eval_iters=10)
     return avg_loss, math.exp(avg_loss)
 
 
+def _init_wandb(args: argparse.Namespace, model: torch.nn.Module) -> object | None:
+    """Initialize wandb if requested. Returns the wandb module or None."""
+    if not args.wandb:
+        print("wandb logging disabled (use --wandb to enable)")
+        return None
+
+    try:
+        import wandb
+    except ImportError:
+        print("wandb not installed. Install with: pip install wandb")
+        return None
+
+    wandb.init(
+        project=args.wandb_project,
+        name=args.wandb_run_name,
+        entity=args.wandb_entity or None,
+        config={
+            "vocab_size": args.vocab_size,
+            "context_length": args.context_length,
+            "d_model": args.d_model,
+            "num_layers": args.num_layers,
+            "num_heads": args.num_heads,
+            "d_ff": args.d_ff,
+            "rope_theta": args.rope_theta,
+            "max_lr": args.max_lr,
+            "min_lr": args.min_lr,
+            "weight_decay": args.weight_decay,
+            "beta1": args.beta1,
+            "beta2": args.beta2,
+            "batch_size": args.batch_size,
+            "max_iters": args.max_iters,
+            "warmup_iters": args.warmup_iters,
+            "cosine_cycle_iters": args.cosine_cycle_iters,
+            "grad_clip": args.grad_clip,
+            "num_params": sum(p.numel() for p in model.parameters()),
+        },
+    )
+    wandb.watch(model, log="gradients", log_freq=args.log_interval)
+    return wandb
+
+
 def train_model():
     parser = argparse.ArgumentParser(
         description="Train a Transformer language model from scratch."
@@ -55,11 +93,11 @@ def train_model():
 
     # ---- Model hyperparameters ----
     parser.add_argument("--vocab_size", type=int, default=10000)
-    parser.add_argument("--context_length", type=int, default=128)
+    parser.add_argument("--context_length", type=int, default=256)
     parser.add_argument("--d_model", type=int, default=512)
     parser.add_argument("--num_layers", type=int, default=8)
     parser.add_argument("--num_heads", type=int, default=8)
-    parser.add_argument("--d_ff", type=int, default=None,
+    parser.add_argument("--d_ff", type=int, default=1344,
                         help="FFN hidden dim (default: nearest multiple of 64 to 8/3 * d_model)")
     parser.add_argument("--rope_theta", type=float, default=10000.0)
 
@@ -98,12 +136,22 @@ def train_model():
     parser.add_argument("--resume_from", type=str, default=None,
                         help="Resume training from a checkpoint file")
 
+    # ---- wandb ----
+    parser.add_argument("--wandb", action="store_true", default=False,
+                        help="Enable Weights & Biases logging")
+    parser.add_argument("--wandb_project", type=str, default="cs336-transformer",
+                        help="wandb project name")
+    parser.add_argument("--wandb_run_name", type=str, default="bs64-lr1e-3",
+                        help="wandb run name (default: auto-generated)")
+    parser.add_argument("--wandb_entity", type=str, default=None,
+                        help="wandb entity (team/user name)")
+
     args = parser.parse_args()
 
     # Auto-compute defaults
     if args.d_ff is None:
         raw = int(8 / 3 * args.d_model)
-        args.d_ff = ((raw + 63) // 64) * 64  # nearest multiple of 64
+        args.d_ff = ((raw + 63) // 64) * 64
 
     if args.cosine_cycle_iters is None:
         args.cosine_cycle_iters = args.max_iters
@@ -146,6 +194,9 @@ def train_model():
         start_iter = load_checkpoint(args.resume_from, model, optimizer)
         print(f"Resumed at iteration {start_iter}")
 
+    # ---- Initialize wandb ----
+    wb = _init_wandb(args, model)
+
     # ---- Training loop ----
     model.train()
     print(f"Starting training on {args.device} for {args.max_iters} iterations "
@@ -185,17 +236,31 @@ def train_model():
 
         optimizer.step()
 
-        # ---- Logging ----
+        # ---- Logging (console + wandb) ----
         if it % args.log_interval == 0:
             elapsed = time.time() - t_start
             tokens_per_sec = total_tokens / elapsed if elapsed > 0 else 0
+            train_ppl = math.exp(loss.item())
+
             print(
                 f"iter {it:7d} | "
                 f"loss {loss.item():.4f} | "
-                f"ppl {math.exp(loss.item()):.2f} | "
+                f"ppl {train_ppl:.2f} | "
                 f"lr {current_lr:.2e} | "
                 f"tok/s {tokens_per_sec:,.0f}"
             )
+
+            if wb is not None:
+                wb.log({
+                    "train/loss": loss.item(),
+                    "train/perplexity": train_ppl,
+                    "train/learning_rate": current_lr,
+                    "train/tokens_per_sec": tokens_per_sec,
+                    "train/total_tokens": total_tokens,
+                    "wallclock/elapsed_seconds": elapsed,
+                    "wallclock/elapsed_hours": elapsed / 3600,
+                    "iteration": it,
+                })
 
         # ---- Validation ----
         if it % args.eval_interval == 0 and it > 0:
@@ -210,6 +275,13 @@ def train_model():
                 f"elapsed {elapsed:.0f}s"
             )
 
+            if wb is not None:
+                wb.log({
+                    "val/loss": val_loss,
+                    "val/perplexity": val_ppl,
+                    "iteration": it,
+                })
+
         # ---- Checkpoint ----
         if it % args.checkpoint_interval == 0 and it > 0:
             ckpt_path = os.path.join(args.checkpoint_dir, f"checkpoint_{it:07d}.pt")
@@ -217,7 +289,7 @@ def train_model():
             print(f"--- Checkpoint saved to {ckpt_path}")
 
     # ---- Final checkpoint ----
-    final_path = os.path.join(args.checkpoint_dir, f"checkpoint_final.pt")
+    final_path = os.path.join(args.checkpoint_dir, "checkpoint_final.pt")
     save_checkpoint(model, optimizer, args.max_iters, final_path)
     print(f"Training complete. Final checkpoint saved to {final_path}")
 
@@ -225,9 +297,19 @@ def train_model():
     val_loss, val_ppl = _evaluate(
         model, val_dataset, args.batch_size, args.context_length, args.device
     )
+    total_time = time.time() - t_start
     print(f"Final validation -- loss: {val_loss:.4f}  ppl: {val_ppl:.2f}")
-    print(f"Total training time: {time.time() - t_start:.0f}s")
+    print(f"Total training time: {total_time:.0f}s ({total_time/3600:.1f}h)")
     print(f"Total tokens processed: {total_tokens:,}")
+
+    if wb is not None:
+        wb.log({
+            "val/loss_final": val_loss,
+            "val/perplexity_final": val_ppl,
+            "wallclock/total_hours": total_time / 3600,
+            "wallclock/total_tokens": total_tokens,
+        })
+        wb.finish()
 
 
 if __name__ == "__main__":
