@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import statistics
 import timeit
 
@@ -53,19 +54,28 @@ def run_benchmark(
     warmup_steps: int,
     measure_steps: int,
     device: str,
+    amp_dtype: torch.dtype | None = None,
 ) -> dict[str, float]:
     optimizer = AdamW(model.parameters(), lr=1e-3)
 
+    autocast_ctx = (
+        torch.autocast(device_type=device, dtype=amp_dtype)
+        if amp_dtype is not None and device.startswith("cuda")
+        else contextlib.nullcontext()
+    )
+
     def forward_step():
         model.train()
-        logits = model(x)
+        with autocast_ctx:
+            logits = model(x)
         nn.functional.cross_entropy(
             logits.view(-1, logits.size(-1)), y.view(-1)
         )
 
     def forward_backward_step():
         model.train()
-        logits = model(x)
+        with autocast_ctx:
+            logits = model(x)
         loss = nn.functional.cross_entropy(
             logits.view(-1, logits.size(-1)), y.view(-1)
         )
@@ -74,7 +84,8 @@ def run_benchmark(
     def full_step():
         model.train()
         optimizer.zero_grad()
-        logits = model(x)
+        with autocast_ctx:
+            logits = model(x)
         loss = nn.functional.cross_entropy(
             logits.view(-1, logits.size(-1)), y.view(-1)
         )
@@ -130,11 +141,19 @@ def main():
     parser.add_argument("--warmup-steps", type=int, default=5)
     parser.add_argument("--measure-steps", type=int, default=10)
     parser.add_argument("--all-sizes", action="store_true", help="Benchmark all model sizes")
+    parser.add_argument(
+        "--amp",
+        choices=["none", "fp16", "bf16"],
+        default="none",
+        help="Autocast mixed precision: none (FP32), fp16, or bf16",
+    )
     args = parser.parse_args()
+
+    amp_dtype = {"fp16": torch.float16, "bf16": torch.bfloat16}.get(args.amp)
 
     device = get_device()
     print(f"Device: {device}")
-    print(f"Mode: {args.mode}")
+    print(f"Mode: {args.mode} | AMP: {args.amp}")
     print(f"Batch size: {args.batch_size}, Seq len: {args.seq_len}")
     print(f"Warmup steps: {args.warmup_steps}, Measure steps: {args.measure_steps}")
 
@@ -164,6 +183,7 @@ def main():
             warmup_steps=args.warmup_steps,
             measure_steps=args.measure_steps,
             device=device,
+            amp_dtype=amp_dtype,
         )
 
         print(f"  Mean: {results['mean']*1000:.2f} ms")
